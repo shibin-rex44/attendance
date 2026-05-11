@@ -311,6 +311,68 @@ body {
 .leg-item { display: flex; align-items: center; gap: 5px; }
 .leg-dot { width: 10px; height: 10px; border-radius: 3px; }
 
+/* ── DIVISION BADGES ── */
+.div-badge {
+  display: inline-flex; align-items: center; padding: 2px 8px;
+  border-radius: 999px; font-size: 10px; font-weight: 600; gap: 3px;
+}
+.div-software  { background: #E8F0FE; color: #1a56db; border: 1px solid #a4c2f7; }
+.div-accounting{ background: #FEF3C7; color: #92400e; border: 1px solid #fcd34d; }
+.div-multimedia{ background: #F3E8FF; color: #6b21a8; border: 1px solid #d8b4fe; }
+
+/* ── DIVISION HISTORY ── */
+.div-history { display: flex; flex-direction: column; gap: 4px; }
+.div-history-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--text2);
+  background: var(--bg2); padding: 4px 8px; border-radius: 6px;
+}
+.div-history-item .arrow { color: var(--text3); }
+
+/* ── ABSENT LIST ── */
+.absent-date-sel { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.absent-date-sel input[type=date] {
+  padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border2);
+  font-size: 13px; background: var(--surface); color: var(--text); outline: none;
+}
+.absent-date-sel input[type=date]:focus { border-color: var(--green); }
+.absent-card {
+  display: grid; grid-template-columns: auto 1fr auto;
+  gap: 10px; align-items: center;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 14px; margin-bottom: 6px;
+  box-shadow: var(--shadow);
+}
+.absent-card.is-absent { border-left: 3px solid var(--red); }
+.absent-card.is-leave  { border-left: 3px solid var(--amber); }
+
+/* ── EXAM ── */
+.exam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.exam-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px;
+  box-shadow: var(--shadow);
+}
+.exam-card-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+.exam-score { font-size: 22px; font-weight: 700; }
+.exam-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.exam-table th { padding: 6px 8px; background: var(--bg2); color: var(--text2); font-weight: 500; text-align: left; border-bottom: 1px solid var(--border); }
+.exam-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.exam-table tr:last-child td { border-bottom: none; }
+.exam-table tr:hover td { background: var(--bg); }
+.grade { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+.grade-A { background: var(--green-light); color: var(--green-text); }
+.grade-B { background: #EFF6FF; color: #1D4ED8; }
+.grade-C { background: var(--amber-light); color: var(--amber-text); }
+.grade-D { background: var(--red-light); color: var(--red-text); }
+.mark-input { width: 60px; padding: 4px 6px; border: 1px solid var(--border2); border-radius: 6px; font-size: 12px; text-align: center; outline: none; }
+.mark-input:focus { border-color: var(--green); }
+
+/* ── EXAM TABS ── */
+.sub-tabs { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+.sub-tab { padding: 6px 14px; border-radius: 999px; font-size: 12px; cursor: pointer; border: 1px solid var(--border2); background: var(--surface); color: var(--text2); transition: all 0.12s; white-space: nowrap; font-weight: 500; }
+.sub-tab.active { background: var(--green); color: white; border-color: var(--green); }
+
 /* ── INFO ROW ── */
 .info-row {
   display: flex; gap: 6px; align-items: center; font-size: 12px;
@@ -414,6 +476,12 @@ body {
     <div class="nav-tab" onclick="switchTab('report')" id="tab-report">
       <i class="ti ti-chart-bar"></i> Report
     </div>
+    <div class="nav-tab" onclick="switchTab('absent')" id="tab-absent">
+      <i class="ti ti-user-x"></i> Absent List
+    </div>
+    <div class="nav-tab" onclick="switchTab('exam')" id="tab-exam">
+      <i class="ti ti-writing"></i> Examination
+    </div>
   </div>
 
   <div class="content" id="mainContent">
@@ -469,9 +537,14 @@ let state = {
   batch: 'b1',
   students: [],
   attendance: {},
+  exams: {},        // examId -> {name, maxMarks, date, division}
+  examMarks: {},    // studentId -> {examId -> mark}
   searchQ: '',
   filterBatch: 'all',
   filterStatus: 'all',
+  filterDivision: 'all',
+  absentDate: '',
+  examTab: 'software',  // software | accounting | multimedia
 };
 
 let currentUser = null;
@@ -533,6 +606,9 @@ async function loadAllData() {
 
     // Load attendance docs for this month (lazy)
     await loadAttendanceMonth(state.month);
+
+    // Load exams and marks
+    await loadMeta();
   } catch(e) {
     console.error(e);
     showToast('Error loading data');
@@ -658,7 +734,9 @@ function render() {
   const c = document.getElementById('mainContent');
   if (state.tab === 'attendance') renderAttendance(c);
   else if (state.tab === 'students') renderStudents(c);
-  else renderReport(c);
+  else if (state.tab === 'report') renderReport(c);
+  else if (state.tab === 'absent') renderAbsentList(c);
+  else if (state.tab === 'exam') renderExam(c);
 }
 
 // ── ATTENDANCE TAB ──
@@ -770,15 +848,24 @@ window.markAllPresent = function() {
   render();
 };
 
+function divBadge(div) {
+  if (!div) return '';
+  const label = div.charAt(0).toUpperCase()+div.slice(1);
+  const cls = `div-${div}`;
+  const icon = div==='software'?'💻':div==='accounting'?'📊':'🎨';
+  return `<span class="div-badge ${cls}">${icon} ${label}</span>`;
+}
+
 // ── STUDENTS TAB ──
 function renderStudents(c) {
   const batchMap = {}; BATCHES.forEach(b=>batchMap[b.id]=b.label);
   const filtered = state.students.filter(s => {
     const mb = state.filterBatch==='all'||s.batch===state.filterBatch;
     const ms = state.filterStatus==='all'||s.status===state.filterStatus;
+    const md = state.filterDivision==='all'||s.division===state.filterDivision;
     const q = state.searchQ.toLowerCase();
     const mq = !q||s.name.toLowerCase().includes(q)||s.regNo.toLowerCase().includes(q)||s.course.toLowerCase().includes(q);
-    return mb&&ms&&mq;
+    return mb&&ms&&md&&mq;
   });
   const activeCount = state.students.filter(s=>s.status==='active').length;
   const completedCount = state.students.filter(s=>s.status==='completed').length;
@@ -787,10 +874,11 @@ function renderStudents(c) {
     <div class="student-card">
       <div class="student-avatar">${initials(s.name)}</div>
       <div class="student-info">
-        <div class="student-name">${s.name}</div>
+        <div class="student-name">${s.name} &nbsp;${divBadge(s.division)}</div>
         <div class="student-meta">${s.regNo} · ${s.course} · ${batchMap[s.batch]||s.batch}</div>
         <div class="student-meta">📞 ${s.phone1}${s.phone2?' · '+s.phone2:''}</div>
         ${s.remarks?`<div class="student-meta" style="color:var(--text);margin-top:2px">${s.remarks}</div>`:''}
+        ${s.divisionHistory&&s.divisionHistory.length>1?`<div class="student-meta" style="margin-top:3px">🔄 ${s.divisionHistory.map(h=>h.div.charAt(0).toUpperCase()+h.div.slice(1)).join(' → ')}</div>`:''}
       </div>
       <div><span class="badge ${s.status==='active'?'badge-active':'badge-completed'}">${s.status}</span></div>
       <div style="display:flex;gap:6px;">
@@ -805,6 +893,9 @@ function renderStudents(c) {
       <div class="stat-card"><div class="stat-label">Total students</div><div class="stat-value">${state.students.length}</div></div>
       <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value" style="color:var(--green-dark)">${activeCount}</div></div>
       <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value" style="color:var(--text2)">${completedCount}</div></div>
+      <div class="stat-card"><div class="stat-label">💻 Software</div><div class="stat-value" style="color:#1a56db">${state.students.filter(s=>s.division==='software'&&s.status==='active').length}</div></div>
+      <div class="stat-card"><div class="stat-label">📊 Accounting</div><div class="stat-value" style="color:#92400e">${state.students.filter(s=>s.division==='accounting'&&s.status==='active').length}</div></div>
+      <div class="stat-card"><div class="stat-label">🎨 Multimedia</div><div class="stat-value" style="color:#6b21a8">${state.students.filter(s=>s.division==='multimedia'&&s.status==='active').length}</div></div>
     </div>
     <div class="section-header">
       <div class="section-title">All students</div>
@@ -813,6 +904,12 @@ function renderStudents(c) {
     <div class="filter-bar">
       <input class="search-input" placeholder="Search name, reg no, course…" value="${state.searchQ}"
         oninput="state.searchQ=this.value;render()">
+      <select class="filter-select" onchange="state.filterDivision=this.value;render()">
+        <option value="all" ${state.filterDivision==='all'?'selected':''}>All divisions</option>
+        <option value="software" ${state.filterDivision==='software'?'selected':''}>💻 Software</option>
+        <option value="accounting" ${state.filterDivision==='accounting'?'selected':''}>📊 Accounting</option>
+        <option value="multimedia" ${state.filterDivision==='multimedia'?'selected':''}>🎨 Multimedia</option>
+      </select>
       <select class="filter-select" onchange="state.filterBatch=this.value;render()">
         <option value="all" ${state.filterBatch==='all'?'selected':''}>All batches</option>
         ${BATCHES.map(b=>`<option value="${b.id}" ${state.filterBatch===b.id?'selected':''}>${b.label}</option>`).join('')}
@@ -844,6 +941,14 @@ window.openEditStudent = function(id) {
 
 function openStudentModal(prefill) {
   const batchOpts = BATCHES.map(b=>`<option value="${b.id}" ${prefill&&prefill.batch===b.id?'selected':''}>${b.label}</option>`).join('');
+  const divOpts = ['Software','Accounting','Multimedia'].map(d=>`<option value="${d.toLowerCase()}" ${prefill&&prefill.division===d.toLowerCase()?'selected':''}>${d}</option>`).join('');
+  const divHistory = prefill && prefill.divisionHistory && prefill.divisionHistory.length > 1
+    ? `<div class="form-group span-2">
+        <label>Division history</label>
+        <div class="div-history">${prefill.divisionHistory.map((h,i)=>
+          `<div class="div-history-item">${i>0?'<span class="arrow">→</span>':''}<span>${h.div.charAt(0).toUpperCase()+h.div.slice(1)}</span><span style="color:var(--text3)">${h.since}</span></div>`
+        ).join('')}</div>
+       </div>` : '';
   const mc = document.getElementById('modalContainer');
   mc.innerHTML = `<div class="modal-overlay" onclick="closeModalOnBg(event)">
     <div class="modal">
@@ -854,11 +959,13 @@ function openStudentModal(prefill) {
       <div class="form-grid">
         <div class="form-group"><label>Full name *</label><input id="f_name" value="${prefill?prefill.name:''}" placeholder="Student name"></div>
         <div class="form-group"><label>Registration no. *</label><input id="f_reg" value="${prefill?prefill.regNo:''}" placeholder="e.g. 2024001"></div>
-        <div class="form-group span-2"><label>Course *</label><input id="f_course" value="${prefill?prefill.course:''}" placeholder="e.g. Web Development, Tally, DTP…"></div>
-        <div class="form-group span-2"><label>Batch *</label><select id="f_batch">${batchOpts}</select></div>
+        <div class="form-group span-2"><label>Course *</label><input id="f_course" value="${prefill?prefill.course:''}" placeholder="e.g. DFA, Tally, Web Design…"></div>
+        <div class="form-group"><label>Division *</label><select id="f_div">${divOpts}</select></div>
+        <div class="form-group"><label>Batch *</label><select id="f_batch">${batchOpts}</select></div>
         <div class="form-group"><label>Phone 1 *</label><input id="f_ph1" value="${prefill?prefill.phone1:''}" placeholder="+91 XXXXX XXXXX"></div>
         <div class="form-group"><label>Phone 2</label><input id="f_ph2" value="${prefill?prefill.phone2||'':''}" placeholder="Optional"></div>
         <div class="form-group span-2"><label>Remarks</label><textarea id="f_rem">${prefill?prefill.remarks||'':''}</textarea></div>
+        ${divHistory}
       </div>
       <div class="modal-actions">
         <button class="btn" onclick="closeModal()">Cancel</button>
@@ -875,6 +982,7 @@ window.submitStudent = async function(editId) {
   const regNo = document.getElementById('f_reg').value.trim();
   const course = document.getElementById('f_course').value.trim();
   const batch = document.getElementById('f_batch').value;
+  const division = document.getElementById('f_div').value;
   const phone1 = document.getElementById('f_ph1').value.trim();
   const phone2 = document.getElementById('f_ph2').value.trim();
   const remarks = document.getElementById('f_rem').value.trim();
@@ -883,9 +991,16 @@ window.submitStudent = async function(editId) {
   let student;
   if (editId) {
     student = state.students.find(x=>x.id===editId);
-    if (student) Object.assign(student, {name,regNo,course,batch,phone1,phone2,remarks});
+    if (student) {
+      // if division changed, append to history
+      if (division !== student.division) {
+        if (!student.divisionHistory) student.divisionHistory = [{div: student.division, since: student.joinedMonth||state.month}];
+        student.divisionHistory.push({div: division, since: state.month});
+      }
+      Object.assign(student, {name,regNo,course,batch,division,phone1,phone2,remarks});
+    }
   } else {
-    student = { id: uid(), name, regNo, course, batch, phone1, phone2, remarks, status:'active', joinedMonth: state.month };
+    student = { id: uid(), name, regNo, course, batch, division, phone1, phone2, remarks, status:'active', joinedMonth: state.month, divisionHistory:[{div:division, since:state.month}] };
     state.students.push(student);
   }
   closeModal();
@@ -988,9 +1103,220 @@ function renderReport(c) {
     </div>`}`;
 }
 
+// ── ABSENT LIST TAB ──
+function renderAbsentList(c) {
+  if (!state.absentDate) {
+    const t = new Date(); state.absentDate = dateStr(t);
+  }
+  const selDate = state.absentDate;
+  const selDay = new Date(selDate + 'T00:00:00').getDay();
+
+  // collect all batches that have class on this day
+  const activeBatches = BATCHES.filter(b => b.days.includes(selDay));
+  const ym = selDate.slice(0,7);
+
+  let absentStudents = [];
+  activeBatches.forEach(b => {
+    const att = getAtt(b.id, ym);
+    const students = getActiveStudents(b.id);
+    students.forEach(s => {
+      const v = (att[s.id]||{})[selDate]||'';
+      if (v === 'A' || v === 'L') {
+        absentStudents.push({...s, status_val: v, batchLabel: b.label});
+      }
+    });
+  });
+
+  const absentCount = absentStudents.filter(s=>s.status_val==='A').length;
+  const leaveCount  = absentStudents.filter(s=>s.status_val==='L').length;
+
+  const rows = absentStudents.length ? absentStudents.map(s=>`
+    <div class="absent-card is-${s.status_val==='A'?'absent':'leave'}">
+      <div class="student-avatar" style="${s.status_val==='A'?'background:var(--red-light);color:var(--red-text)':'background:var(--amber-light);color:var(--amber-text)'}">${initials(s.name)}</div>
+      <div>
+        <div class="student-name">${s.name} &nbsp;${divBadge(s.division)}</div>
+        <div class="student-meta">${s.regNo} · ${s.course}</div>
+        <div class="student-meta">📞 ${s.phone1}${s.phone2?' · '+s.phone2:''} &nbsp;·&nbsp; ${s.batchLabel}</div>
+      </div>
+      <span class="badge ${s.status_val==='A'?'badge-absent':'badge-leave'}" style="${s.status_val==='A'?'background:var(--red-light);color:var(--red-text)':'background:var(--amber-light);color:var(--amber-text)'}">${s.status_val==='A'?'Absent':'Leave'}</span>
+    </div>`).join('') : `<div class="empty-state"><i class="ti ti-circle-check" style="color:var(--green)"></i><div style="color:var(--green-text);font-weight:500">No absences on this date!</div></div>`;
+
+  c.innerHTML = `
+    <div class="section-header">
+      <div class="section-title">Daily Absent List</div>
+    </div>
+    <div class="absent-date-sel">
+      <label style="font-size:13px;color:var(--text2);font-weight:500">Select date:</label>
+      <input type="date" value="${selDate}" max="${dateStr(new Date())}" onchange="state.absentDate=this.value;render()">
+      <span style="font-size:12px;color:var(--text2)">${new Date(selDate+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</span>
+    </div>
+    ${activeBatches.length === 0 ? '<div class="info-row"><i class="ti ti-moon"></i> No batches scheduled on this day (holiday or no class).</div>' : ''}
+    <div class="stats-grid" style="max-width:400px">
+      <div class="stat-card"><div class="stat-label">Absent</div><div class="stat-value" style="color:var(--red)">${absentCount}</div></div>
+      <div class="stat-card"><div class="stat-label">Leave</div><div class="stat-value" style="color:var(--amber)">${leaveCount}</div></div>
+      <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${absentCount+leaveCount}</div></div>
+    </div>
+    <div>${rows}</div>`;
+}
+
+// ── EXAM TAB ──
+function renderExam(c) {
+  const div = state.examTab;
+  const divStudents = state.students.filter(s => s.division === div && s.status === 'active');
+  const divExams = Object.values(state.exams).filter(e => e.division === div);
+
+  const subTabs = ['software','accounting','multimedia'].map(d=>`
+    <div class="sub-tab ${state.examTab===d?'active':''}" onclick="state.examTab='${d}';render()">
+      ${d==='software'?'💻 Software':d==='accounting'?'📊 Accounting':'🎨 Multimedia'}
+    </div>`).join('');
+
+  if (divStudents.length === 0) {
+    c.innerHTML = `
+      <div class="section-header"><div class="section-title">Examination</div><button class="btn btn-primary" onclick="openAddExam()"><i class="ti ti-plus"></i> Add exam</button></div>
+      <div class="sub-tabs">${subTabs}</div>
+      <div class="empty-state"><i class="ti ti-writing"></i><div>No active students in ${div} division</div></div>`;
+    return;
+  }
+
+  // Table: students as rows, exams as columns
+  const examCols = divExams.map(e=>`<th style="text-align:center;min-width:80px">
+    <div style="font-size:11px">${e.name}</div>
+    <div style="font-size:10px;color:var(--text3)">/${e.maxMarks}</div>
+    <button class="btn btn-sm" onclick="deleteExam('${e.id}')" style="padding:2px 5px;margin-top:3px;font-size:10px" title="Delete exam"><i class="ti ti-trash"></i></button>
+  </th>`).join('');
+
+  const rows = divStudents.map(s => {
+    const marks = state.examMarks[s.id] || {};
+    let totalMarks = 0, totalMax = 0;
+    divExams.forEach(e => { if (marks[e.id] !== undefined && marks[e.id] !== '') { totalMarks += Number(marks[e.id]); totalMax += Number(e.maxMarks); } });
+    const pct = totalMax > 0 ? Math.round(totalMarks/totalMax*100) : null;
+    const grade = pct === null ? '' : pct >= 85 ? 'A' : pct >= 65 ? 'B' : pct >= 50 ? 'C' : 'D';
+    const cells = divExams.map(e => {
+      const v = marks[e.id] !== undefined ? marks[e.id] : '';
+      return `<td style="text-align:center;padding:4px">
+        <input class="mark-input" type="number" min="0" max="${e.maxMarks}" value="${v}"
+          onchange="saveMark('${s.id}','${e.id}',this.value,'${div}')" placeholder="–">
+      </td>`;
+    }).join('');
+    return `<tr>
+      <td style="white-space:nowrap;position:sticky;left:0;background:var(--surface);z-index:5;padding:8px 12px">
+        <div style="font-weight:500;font-size:12px">${s.name}</div>
+        <div style="font-size:10px;color:var(--text2)">${s.regNo}</div>
+      </td>
+      ${cells}
+      <td style="text-align:center;padding:8px">
+        ${pct !== null ? `<div style="font-weight:700;color:${pct>=75?'var(--green)':pct>=50?'var(--amber)':'var(--red)'}">${pct}%</div><span class="grade grade-${grade}">${grade}</span>` : '<span style="color:var(--text3)">–</span>'}
+      </td>
+    </tr>`;
+  }).join('');
+
+  c.innerHTML = `
+    <div class="section-header">
+      <div class="section-title">Examination</div>
+      <button class="btn btn-primary" onclick="openAddExam()"><i class="ti ti-plus"></i> Add exam / test</button>
+    </div>
+    <div class="sub-tabs">${subTabs}</div>
+    <div class="info-row"><i class="ti ti-info-circle"></i> Enter marks for each student. Grades: A≥85%, B≥65%, C≥50%, D&lt;50%. Saves automatically.</div>
+    ${divExams.length === 0 ? `<div class="empty-state"><i class="ti ti-writing"></i><div>No exams added yet for ${div}</div><div style="font-size:12px;margin-top:6px">Click "Add exam / test" to create one</div></div>` : `
+    <div class="att-table-wrap">
+      <table class="att-table">
+        <thead><tr>
+          <th style="position:sticky;left:0;background:var(--bg2);z-index:6">Student</th>
+          ${examCols}
+          <th style="text-align:center">Result</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`}`;
+}
+
+window.openAddExam = function() {
+  const divOpts = ['Software','Accounting','Multimedia'].map(d=>`<option value="${d.toLowerCase()}" ${state.examTab===d.toLowerCase()?'selected':''}>${d}</option>`).join('');
+  const mc = document.getElementById('modalContainer');
+  mc.innerHTML = `<div class="modal-overlay" onclick="closeModalOnBg(event)">
+    <div class="modal" style="max-width:380px">
+      <div class="modal-title">Add exam / test <button class="btn btn-sm" onclick="closeModal()" style="padding:4px 8px"><i class="ti ti-x"></i></button></div>
+      <div class="form-grid" style="grid-template-columns:1fr">
+        <div class="form-group"><label>Exam / test name *</label><input id="e_name" placeholder="e.g. Unit Test 1, Final Exam…"></div>
+        <div class="form-group"><label>Division *</label><select id="e_div">${divOpts}</select></div>
+        <div class="form-group"><label>Maximum marks *</label><input id="e_max" type="number" placeholder="e.g. 100" value="100"></div>
+        <div class="form-group"><label>Date</label><input id="e_date" type="date" value="${dateStr(new Date())}"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitExam()"><i class="ti ti-check"></i> Add exam</button>
+      </div>
+    </div>
+  </div>`;
+};
+
+window.submitExam = async function() {
+  const name = document.getElementById('e_name').value.trim();
+  const div  = document.getElementById('e_div').value;
+  const max  = document.getElementById('e_max').value;
+  const date = document.getElementById('e_date').value;
+  if (!name || !max) { showToast('⚠️ Fill required fields'); return; }
+  const id = uid();
+  state.exams[id] = {id, name, division: div, maxMarks: Number(max), date};
+  await saveExams();
+  closeModal();
+  state.examTab = div;
+  showToast('✓ Exam added');
+  render();
+};
+
+window.deleteExam = async function(id) {
+  if (!confirm('Delete this exam and all its marks?')) return;
+  delete state.exams[id];
+  // remove marks for this exam from all students
+  Object.keys(state.examMarks).forEach(sid => { if (state.examMarks[sid]) delete state.examMarks[sid][id]; });
+  await saveExams();
+  await saveExamMarks();
+  showToast('Exam deleted');
+  render();
+};
+
+window.saveMark = async function(studentId, examId, value, div) {
+  if (!state.examMarks[studentId]) state.examMarks[studentId] = {};
+  state.examMarks[studentId][examId] = value === '' ? '' : Number(value);
+  await saveExamMarks();
+};
+
+async function saveExams() {
+  if (!currentUser) return;
+  setSyncState('syncing');
+  try {
+    await setDoc(doc(db,'users',currentUser.uid,'meta','exams'), state.exams);
+    setSyncState('synced');
+  } catch(e) { setSyncState('offline'); }
+}
+
+async function saveExamMarks() {
+  if (!currentUser) return;
+  setSyncState('syncing');
+  clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(async () => {
+    try {
+      await setDoc(doc(db,'users',currentUser.uid,'meta','examMarks'), state.examMarks);
+      setSyncState('synced');
+    } catch(e) { setSyncState('offline'); }
+  }, 600);
+}
+
+async function loadMeta() {
+  if (!currentUser) return;
+  try {
+    const eSnap = await getDoc(doc(db,'users',currentUser.uid,'meta','exams'));
+    if (eSnap.exists()) state.exams = eSnap.data();
+    const mSnap = await getDoc(doc(db,'users',currentUser.uid,'meta','examMarks'));
+    if (mSnap.exists()) state.examMarks = mSnap.data();
+  } catch(e) {}
+}
+
 // ── EXPOSE GLOBALS (needed for inline onclick) ──
 window.render = render;
 window.state = state;
 </script>
 </body>
 </html>
+                                                                                                                                                                                                                                                                                                                                                                                                                                
